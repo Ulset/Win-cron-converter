@@ -10,8 +10,10 @@ class Scheduler:
     }
     """
 
-    def __init__(self, master: Master):
+    def __init__(self, jsonPath):
         self._date_generated = None
+        self._jsonPath = jsonPath
+
 
         self.__create_time_table()
         threading.Thread(target=self.time_loop).start()
@@ -34,7 +36,7 @@ class Scheduler:
 
 
     def __create_time_table(self):
-        """Lager et dictionary med alle tidspunktene ila en dag, legger scripts inn på hvilken tid de skal kjøres."""
+        """Lager et dictionary med alle tidspunktene ila en dag."""
         self.timeschedule = {}
         for hour in range(24):
             hour = str(hour)
@@ -48,8 +50,7 @@ class Scheduler:
 
     def __populate_timetable(self):
         """Parser .json fil etter CRON syntax"""
-        timeInp = open(os.path.join(
-            os.getcwd(), "Script_Dependencies", "Server", "Scheduler.json"))
+        timeInp = open(self._jsonPath)
         timeObj = json.load(timeInp)
         for el in timeObj:
             try:
