@@ -1,142 +1,121 @@
-class Scheduler:
-    """
-    Håndterer scripts som skal startes basert på en tid, tiden kommer fra en .json fil i CRON syntax."
-
-    Syntax:
-    "Test": {
-        "time": "* * * * *",
-        "scriptNavn": "testScript.py",
-        "description": "Dette scriptet kjøres som en test"
-    }
-    """
-
-    def __init__(self, jsonPath):
-        self._date_generated = None
-        self._jsonPath = jsonPath
+from datetime import datetime, timedelta
 
 
-        self.__create_time_table()
-        threading.Thread(target=self.time_loop).start()
-    
-    def __is_refreshed(self):
-        """Returns True if the timeschedule is refreshed today"""
-        dt = datetime.datetime.now()
-        datenow = dt.strftime("%d.%m.%Y")
-        if(self._date_generated == datenow):
-            return True
-        else:
-            return False
-    
-    def __set_refreshed(self):
-        """Sets the last refresh date to now"""
-        dt = datetime.datetime.now()
-        datenow = dt.strftime("%d.%m.%Y")
-        self._date_generated = datenow
+class CronConverter:
+    IS_ALWAYS = "stringFillaBadManKilla"
 
+    def __init__(self, cron_string, dt_input=None):
+        self.minute, self.hour, self.day_date, self.month, self.day_weekday = cron_string.split(" ")
+        if dt_input is None:
+            dt_input = datetime.now().replace(minute=0, second=0)
 
-
-    def __create_time_table(self):
-        """Lager et dictionary med alle tidspunktene ila en dag."""
-        self.timeschedule = {}
-        for hour in range(24):
-            hour = str(hour)
-            for minute in range(60):
-                minute = str(minute)
-                self.timeschedule[f"{hour.rjust(2, '0')}:{minute.rjust(2, '0')}"] = [
-                ]
-
-        self.__populate_timetable()
-        self.__set_refreshed()
-
-    def __populate_timetable(self):
-        """Parser .json fil etter CRON syntax"""
-        timeInp = open(self._jsonPath)
-        timeObj = json.load(timeInp)
-        for el in timeObj:
-            try:
-                timeObj[el]["scriptNavn"]
-                timeObj[el]["description"]
-                timeObj[el]["time"]
-            except:
-                print(
-                    f"Scheduler: '{el}' er ikke definert riktig i JSON filen, hopper over.")
-                continue
-
-            timelist = self.cron_to_list_parser(timeObj[el]["time"])
-            for timeEl in timelist:
-                inputObj = {
-                    "navn": el,
-                    "scriptNavn": timeObj[el]["scriptNavn"],
-                    "description": timeObj[el]["description"]
-                }
-                self.timeschedule[timeEl].append(inputObj)
-            self.logger.log(json.dumps(self.timeschedule, indent=4))
-
-    def cron_to_list_parser(self, cronString: str):
-        """Genererer en liste med godkjente tider IDAG etter cronString."""
-        assert len(cronString.split(
-            " ")) == 5, f"Cronstring: {cronString} følger ikke riktig formatering."
-
-        def subcron_parser(subCronString, subType):
-            output = []
-            rangeValues = {
-                "minute": [0, 59],
-                "hour": [0, 23],
-                "day": [1, 31],
-                "month": [1, 12],
-                "weekday": [0, 6]
+        if self.minute == "*" and self.hour == "*":
+            # If both is '*' need to test every minute and every hours
+            td_args = {
+                "minutes": 1
             }
-            assert subType in rangeValues, f"Argument subType må være en av disse verdiene: {[value for value in rangeValues]}"
-            if subCronString[0] == "*" and len(subCronString) == 1:
-                # Hvis det er bare en stjerne skal den bare gi alle mulige kombinasjoner tilbake
-                [output.append(str(tid).rjust(2, "0")) for tid in range(
-                    rangeValues[subType][0], rangeValues[subType][1]+1)]
-                return output
-            elif subCronString[0] == "*" and subCronString[1] == "/":
-                step = subCronString.split("/")[1]
-                [output.append(str(tid).rjust(2, "0")) for tid in range(
-                    rangeValues[subType][0], rangeValues[subType][1]+1, int(step))]
-                return output
-            elif subCronString[0].isnumeric() and len(subCronString) <= 2:
-                output.append(str(subCronString).rjust(2, "0"))
-                return output
-            elif subCronString[0].isnumeric() and len(subCronString) > 2:
-                stepFlag = False
-                if "/" in subCronString:
-                    assert len(subCronString.split(
-                        "/")) == 2, f"Kan bare være 1 step operatør('/') i CRON syntax. Input: {subCronString}"
-                    step = int(subCronString.split("/")[1])
-                    stepFlag = True
-                if "-" in subCronString:
-                    assert len(subCronString.split(
-                        "-")) == 2, f"Kan bare være 1 range('-') operatør i CRON syntax. Input: {subCronString}"
-                    intervalStart, intervalEnd = subCronString.split("-")
-                    # hvis input var feks 1-20/6 vil intervalEnd være '20/6', splitter derfor intervalEnd etter '/' og bruker første index -> '20'
-                    intervalEnd = intervalEnd.split("/")[0]
-                if stepFlag:
-                    for i in range(int(intervalStart), int(intervalEnd), step):
-                        output.append(str(i).rjust(2, "0"))
-                else:
-                    for i in range(int(intervalStart), int(intervalEnd)):
-                        output.append(str(i).rjust(2, "0"))
-                return output
-
-        minute, hour, day, month, weekday = cronString.split(" ")
-        datetimeObj = datetime.datetime.today()
-        monthToday = datetimeObj.strftime("%m")
-        dateToday = datetimeObj.strftime("%d")
-        weekdayToday = datetimeObj.strftime("%w")
-        # zero padder den siden datetime ikke gjør det
-        weekdayToday = weekdayToday.rjust(2, "0")
-        if not monthToday in subcron_parser(month, "month") or not dateToday in subcron_parser(day, "day") or not weekdayToday in subcron_parser(weekday, "weekday"):
-            # Denne kicker hvis dagen/måneden/ukedagen IDAG ikke stemmer med når scriptet skal kjøre, derfor returnerer den bare en tom liste
-            #
-            return []
+        elif self.str_is_int(self.minute) and self.hour == "*":
+            # If onluy hour is '*' just need to test a single specific time an hour
+            dt_input = dt_input.replace(minute=int(minute))
+            td_args = {
+                "hours": 1
+            }
+        elif self.str_is_int(self.minute) and self.str_is_int(self.hour):
+            # If neither minute or hour is '*', only need to test once a day.
+            dt_input = dt_input.replace(minute=int(self.minute), hour=int(self.hour))
+            if self.str_is_int(self.day_weekday):
+                td_args = {
+                    "days": 1
+                }
+            else:
+                td_args = {
+                    "days": self.__cron_to_interval(self.day_weekday)
+                }
+        elif self.__cron_to_interval(self.minute) > 1 and (self.hour == "*" or "-" in self.hour):
+            # Causes a error.
+            td_args = {
+                "minutes": self.__cron_to_interval(self.minute)
+            }
         else:
-            output = []
-            approvedHours = subcron_parser(hour, "hour")
-            approvedMinutes = subcron_parser(minute, "minute")
-            for h in approvedHours:
-                for m in approvedMinutes:
-                    output.append(f"{h}:{m}")
-            return output
+            # Else should use the interval for both minute and hour defined.
+            if self.str_is_int(self.minute):
+                dt_input = dt_input.replace(minute=int(self.minute))
+            if self.str_is_int(self.hour):
+                dt_input = dt_input.replace(hour=int(self.hour))
+            td_args = {
+                "minutes": self.__cron_to_interval(self.minute),
+                "hours": self.__cron_to_interval(self.hour)
+            }
+
+        self.td_obj = timedelta(**td_args)
+        self.dt_obj = dt_input
+
+    @staticmethod
+    def str_is_int(string):
+        try:
+            int(string)
+            return True
+        except ValueError:
+            return False
+
+    def __cron_to_interval(self, subcron_slice):
+        subcron_slice: str
+        if subcron_slice == "*":
+            return 1
+        elif self.str_is_int(subcron_slice):
+            return 0
+        elif "/" in subcron_slice:
+            # If interval counter (ie */30) should return 30 since thats the interval
+            return int(subcron_slice.split("/")[1])
+        elif "-" in subcron_slice:
+            # ie(1-5) should return 1 but needs another check later if time is inside range.
+            return 1
+
+    def __cron_to_range(self, subcron_string, inclusive=True):
+        """
+        Converts a subcron string to a range of accepted values
+        :param inclusive if the range should include the last integer (IE '2-4' -> [2,3](not inclusive), [2,3,4](inclusive)
+        """
+        subcron_string: str
+        if self.str_is_int(subcron_string):
+            return [int(subcron_string)]
+        elif "-" in subcron_string:
+            start, stop = subcron_string.split("-")
+            start = int(start)
+            stop = int(stop) if not inclusive else int(stop) + 1
+            return [x for x in range(start, stop)]
+        else:
+            return IS_ALWAYS
+
+    def __time_accepted(self, new_dt):
+        new_dt: datetime
+        day_weekday_range = self.__cron_to_range(self.day_weekday)
+        day_date_range = self.__cron_to_range(self.day_date)
+        month_range = self.__cron_to_range(self.month)
+        minute_range = self.__cron_to_range(self.minute)
+        hour_range = self.__cron_to_range(self.hour, inclusive=False)
+
+        minute_acccepted = new_dt.minute in minute_range if minute_range != IS_ALWAYS else True
+        hour_accepted = new_dt.hour in hour_range if hour_range != IS_ALWAYS else True
+        clock_accepted = minute_acccepted and hour_accepted
+
+        day_weekday_accepted = new_dt.weekday() in day_weekday_range if day_weekday_range != IS_ALWAYS else True
+        day_date_accepted = new_dt.day in day_date_range if day_date_range != IS_ALWAYS else True
+        month_accepted = new_dt.month in month_range if month_range != IS_ALWAYS else True
+        return day_weekday_accepted and day_date_accepted and month_accepted and clock_accepted
+
+    def get_next_time(self) -> datetime:
+        t_now = datetime.now()
+        self.dt_obj = self.dt_obj + self.td_obj
+        while self.dt_obj < t_now or not self.__time_accepted(self.dt_obj):
+            self.dt_obj = self.dt_obj + self.td_obj
+
+        return self.dt_obj
+
+
+def test():
+    cron_string = "*/30 * * * *"
+
+    c = CronConverter(cron_string)
+    for _ in range(50):
+        print(c.get_next_time().strftime("%d/%m/%Y, %H:%M:%S"))
