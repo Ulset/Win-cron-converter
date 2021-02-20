@@ -1,1 +1,1 @@
-Converts CRON syntax for timescheduling to method calls in Python, made this for work so probably wont work with anything else. 
+Converts cron syntax to datetime objects. Should not be used when there is a huge gap between 'runs', not opimized AT ALL
